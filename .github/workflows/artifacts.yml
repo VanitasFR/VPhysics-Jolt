@@ -8,6 +8,7 @@ jobs:
       fail-fast: false
       matrix:
         source_branch: [sdk2013-sp, sdk2013-mp, asw, gmod]
+        architecture: [x86, x64]  # Added x64 architecture
 
     runs-on: windows-2022
 
@@ -30,7 +31,9 @@ jobs:
           | Select-Object -ExpandProperty InstallationPath
         Write-Output "VSDEVCMD=${installationPath}\Common7\Tools\VsDevCmd.bat" `
           | Out-File -FilePath "${Env:GITHUB_ENV}" -Append
+
     - name: Build MSVC x86
+      if: matrix.architecture == 'x86'  # Build for x86
       working-directory: ${{ matrix.source_branch }}/src
       run: |
         & "${Env:COMSPEC}" /s /c "`"${Env:VSDEVCMD}`" -arch=x86 -host_arch=x64 -no_logo && set" `
@@ -40,10 +43,23 @@ jobs:
         .\createjoltprojects.bat
         devenv jolt.sln /upgrade
         msbuild jolt.sln /nodeReuse:false /t:Rebuild /p:Configuration=Release /p:Platform=x86 /m /v:minimal
+
+    - name: Build MSVC x64
+      if: matrix.architecture == 'x64'  # Build for x64
+      working-directory: ${{ matrix.source_branch }}/src
+      run: |
+        & "${Env:COMSPEC}" /s /c "`"${Env:VSDEVCMD}`" -arch=x64 -host_arch=x64 -no_logo && set" `
+          | % { , ($_ -Split '=', 2) } `
+          | % { [System.Environment]::SetEnvironmentVariable($_[0], $_[1]) }
+        .\fix_registry.bat
+        .\createjoltprojects.bat
+        devenv jolt.sln /upgrade
+        msbuild jolt.sln /nodeReuse:false /t:Rebuild /p:Configuration=Release /p:Platform=x64 /m /v:minimal
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: vphysics_jolt_${{ matrix.source_branch }}_win32
+        name: vphysics_jolt_${{ matrix.source_branch }}_${{ matrix.architecture }}_win
         path: ${{ matrix.source_branch }}/game
         if-no-files-found: error
 
@@ -52,6 +68,7 @@ jobs:
       fail-fast: false
       matrix:
         source_branch: [sdk2013-sp, sdk2013-mp, gmod]
+        architecture: [x86, x64]  # Added x64 architecture
 
     runs-on: ubuntu-latest
     container: debian:bullseye
@@ -62,6 +79,7 @@ jobs:
         dpkg --add-architecture i386
         apt update
         apt install -y build-essential git libstdc++6:i386 gcc-multilib g++-multilib
+
     - name: Checkout Mini Source SDK
       uses: actions/checkout@v4
       with:
@@ -74,6 +92,7 @@ jobs:
         submodules: recursive
 
     - name: Build GCC x86
+      if: matrix.architecture == 'x86'  # Build for x86
       working-directory: ${{ matrix.source_branch }}/src
       run: |
         chmod +x createjoltprojects.sh
@@ -82,9 +101,21 @@ jobs:
         chmod +x devtools/gendbg.sh
         ./createjoltprojects.sh 
         make -f jolt.mak -j $(nproc)
+
+    - name: Build GCC x64
+      if: matrix.architecture == 'x64'  # Build for x64
+      working-directory: ${{ matrix.source_branch }}/src
+      run: |
+        chmod +x createjoltprojects.sh
+        chmod +x devtools/bin/vpc_linux
+        chmod +x devtools/bin/vpc
+        chmod +x devtools/gendbg.sh
+        ./createjoltprojects.sh 
+        make -f jolt.mak -j $(nproc) ARCH=x86_64
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: vphysics_jolt_${{ matrix.source_branch }}_linux32
+        name: vphysics_jolt_${{ matrix.source_branch }}_${{ matrix.architecture }}_linux
         path: ${{ matrix.source_branch }}/game
         if-no-files-found: error
